@@ -1,4 +1,4 @@
-name: Wentra - Akıllı Java Derleme Sistemi
+name: Wentra - Sabit Yol Derleme Sistemi
 
 on:
   push:
@@ -7,9 +7,7 @@ on:
 
 jobs:
   build:
-    name: JAR Üretim Süreci
     runs-on: ubuntu-latest
-    
     steps:
     - name: 1. Depoyu Klonla
       uses: actions/checkout@v4
@@ -21,37 +19,33 @@ jobs:
         distribution: 'zulu'
         java-package: jdk+fx
 
-    - name: 3. Otomatik Yol Tespiti ve Derleme
+    - name: 3. Doğrudan Derleme (Hardcoded Paths)
       run: |
-        echo "--> Java dosyaları taranıyor..."
-        # Depodaki tüm .java dosyalarını bulur
-        find . -name "*.java" > sources.txt
-        
-        if [ ! -s sources.txt ]; then
-          echo "::error:: HATA: Deponuzda hiçbir .java dosyası yok! Lütfen Java kodlarınızı (src klasörünü) GitHub'a yükleyin efendim."
-          exit 1
-        fi
-
+        # Klasörleri oluştur
         mkdir -p out/classes out/staging
         
-        # Kütüphaneleri bul
-        LIBS=$(find . -name "*.jar" | tr '\n' ':')
-        
-        echo "--> Derleme başlatılıyor..."
-        javac -cp "$LIBS" -d out/classes @sources.txt
+        # EL İLE BELİRTİLEN YOLLAR (Burayı klasör ismine göre düzenleyin)
+        SRC_DIR="WentraReborn-CraftRise/src"
+        LIB_DIR="WentraReborn-CraftRise/libraries"
 
-        echo "--> Paketleme (Java Agent Formatı)..."
+        echo "--> Belirtilen yoldaki dosyalar derleniyor: $SRC_DIR"
+        
+        # Java dosyalarını listele (Arasız, direkt yol üzerinden)
+        find $SRC_DIR -name "*.java" > sources.txt
+        
+        # Derleme başlat (Kütüphanelerle birlikte)
+        javac -cp "$LIB_DIR/*" -d out/classes @sources.txt
+
+        # Paketleme (Java Agent Formatı)
         cd out/staging
-        # Kütüphaneleri JAR içine göm
-        find ../.. -name "*.jar" -exec jar xf {} \;
-        rm -rf META-INF/*.RSA META-INF/*.SF META-INF/*.DSA META-INF/MANIFEST.MF
+        for f in ../../$LIB_DIR/*.jar; do jar xf "$f"; done
+        rm -rf META-INF/MANIFEST.MF
         cp -r ../classes/* .
         
-        # BAN RISKINI SIFIRLAYAN AGENT AYARI
+        # Java Agent Manifesti
         printf "Manifest-Version: 1.0\nMain-Class: wentra.Main\nPremain-Class: wentra.Main\nAgent-Class: wentra.Main\nCan-Retransform-Classes: true\n\n" > manifest.txt
 
         jar cvfm ../../WentraClient.jar manifest.txt .
-        echo "İşlem tamamlandı efendim!"
 
     - name: 4. JAR'ı Yayınla
       uses: actions/upload-artifact@v4
