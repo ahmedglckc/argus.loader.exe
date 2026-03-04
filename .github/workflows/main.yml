@@ -1,4 +1,4 @@
-name: Wentra - Sabit Yol Derleme Sistemi
+name: Wentra - Otomatik Derleme Sistemi
 
 on:
   push:
@@ -7,7 +7,9 @@ on:
 
 jobs:
   build:
+    name: WentraClient JAR Üretimi
     runs-on: ubuntu-latest
+    
     steps:
     - name: 1. Depoyu Klonla
       uses: actions/checkout@v4
@@ -19,55 +21,49 @@ jobs:
         distribution: 'zulu'
         java-package: jdk+fx
 
-    - name: 3. Doğrudan Derleme (Hardcoded Paths)
+    - name: 3. Derleme ve Paketleme İşlemi
       run: |
-        # Klasörleri oluştur
+        echo "--> Hazırlık yapılıyor..."
         mkdir -p out/classes out/staging
         
-        # EL İLE BELİRTİLEN YOLLAR
-        SRC_DIR="WentraReborn-CraftRise/src"
-        LIB_DIR="WentraReborn-CraftRise/libraries"
-
-        echo "--> Belirtilen yollar kontrol ediliyor..."
+        echo "--> Java kaynak dosyaları aranıyor..."
+        # Depodaki tüm .java dosyalarını bulup listeye yazıyoruz
+        find . -name "*.java" > sources.txt
         
-        # GÜVENLİK KONTROLÜ: Klasör gerçekten orada mı?
-        if [ ! -d "$SRC_DIR" ]; then
-          echo "::error:: KRİTİK HATA: '$SRC_DIR' klasörü bulunamadı!"
-          echo "Lütfen GitHub deponuzdaki klasör adının tam olarak 'WentraReborn-CraftRise' olduğundan emin olun."
-          echo "Mevcut depo içeriği:"
-          ls -la
+        # Eğer hiç java dosyası yoksa işlemi durdur ve uyar
+        if [ ! -s sources.txt ]; then
+          echo "::error:: HATA: Deponuzda hiçbir .java dosyası bulunamadı! Lütfen kodlarınızı (src klasörünü) GitHub'a yüklediğinizden emin olun."
           exit 1
         fi
 
-        echo "--> Dosyalar derleniyor: $SRC_DIR"
+        echo "--> Kütüphaneler (.jar) aranıyor..."
+        # Projedeki kütüphaneleri bulup classpath oluşturuyoruz
+        LIBS=$(find . -name "*.jar" | tr '\n' ':')
         
-        # Java dosyalarını listele
-        find "$SRC_DIR" -name "*.java" > sources.txt
-        
-        # Derleme başlat (Kütüphanelerle birlikte)
-        javac -cp "$LIB_DIR/*" -d out/classes @sources.txt
+        echo "--> Kodlar derleniyor..."
+        javac -cp "$LIBS" -d out/classes @sources.txt
 
-        # Paketleme (Java Agent Formatı ve Fat JAR)
+        echo "--> Kütüphaneler JAR içine gömülüyor (Fat JAR)..."
         cd out/staging
+        find ../.. -name "*.jar" -exec jar xf {} \;
         
-        # Kütüphaneler varsa içlerini JAR'a çıkart
-        if [ -d "../../$LIB_DIR" ]; then
-          for f in ../../$LIB_DIR/*.jar; do 
-            # Sadece dosya gerçekten varsa çıkart
-            [ -e "$f" ] && jar xf "$f"
-          done
-        fi
+        # Çakışmaları önlemek için imza dosyalarını temizliyoruz
+        rm -rf META-INF/*.RSA META-INF/*.SF META-INF/*.DSA META-INF/MANIFEST.MF
         
-        rm -rf META-INF/MANIFEST.MF
+        echo "--> Derlenen sınıflar ekleniyor..."
         cp -r ../classes/* .
         
-        # Java Agent Manifesti (Ban Koruması)
-        printf "Manifest-Version: 1.0\nMain-Class: wentra.Main\nPremain-Class: wentra.Main\nAgent-Class: wentra.Main\nCan-Retransform-Classes: true\n\n" > manifest.txt
+        echo "--> Java Agent Manifesti oluşturuluyor..."
+        # Hilenin ban yememesini sağlayan en önemli kısım (Agent-Class)
+        printf "Manifest-Version: 1.0\nMain-Class: wentra.Main\nPremain-Class: wentra.Main\nAgent-Class: wentra.Main\nCan-Retransform-Classes: true\nCan-Redefine-Classes: true\n\n" > manifest.txt
 
+        echo "--> Nihai JAR oluşturuluyor..."
         jar cvfm ../../WentraClient.jar manifest.txt .
+        
+        echo "İşlem başarıyla tamamlandı efendim!"
 
-    - name: 4. JAR'ı Yayınla
+    - name: 4. JAR Dosyasını İndirilebilir Yap
       uses: actions/upload-artifact@v4
       with:
-        name: WentraClient
+        name: WentraClient-Build
         path: WentraClient.jar
