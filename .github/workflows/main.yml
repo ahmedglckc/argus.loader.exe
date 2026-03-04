@@ -1,44 +1,86 @@
-name: Wentra - Java Agent Build
+name: Wentra Client - Java Agent ve Otomatik Derleme
 
 on:
   push:
     branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
   workflow_dispatch: 
 
 jobs:
-  build:
+  build-java-client:
+    name: Java Agent (JAR) Derlemesi
     runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
     
-    - name: Setup JDK 8
+    steps:
+    - name: Depoyu Klonla
+      uses: actions/checkout@v4
+
+    - name: JDK 8 ve JavaFX Ortamını Hazırla
       uses: actions/setup-java@v4
       with:
         java-version: '8'
         distribution: 'zulu'
         java-package: jdk+fx
-
-    - name: Compile JAR
+        
+    - name: Profesyonel Ajan Derlemesi
       run: |
-        mkdir -p build/classes build/jar-staging
-        find WentraReborn-CraftRise/src -name "*.java" > sources.txt
-        javac -cp "WentraReborn-CraftRise/libraries/*" -d build/classes @sources.txt
+        echo "--> Adım 1: Klasör yolları otomatik tespit ediliyor..."
+        # src ve libraries klasörlerini nerede olursa olsun buluyoruz
+        SRC_PATH=$(find . -name "src" -type d -print -quit)
+        LIB_PATH=$(find . -name "libraries" -type d -print -quit)
+        
+        echo "Tespit edilen Kaynak (SRC): $SRC_PATH"
+        echo "Tespit edilen Kütüphaneler (LIB): $LIB_PATH"
+
+        if [ -z "$SRC_PATH" ]; then
+          echo "HATA: 'src' klasörü bulunamadı! Lütfen deponuzu kontrol edin."
+          exit 1
+        fi
+
+        mkdir -p build/classes
+        mkdir -p build/jar-staging
+        
+        echo "--> Adım 2: Java dosyaları taranıyor..."
+        find "$SRC_PATH" -name "*.java" > sources.txt
+        
+        echo "--> Adım 3: Derleme (Javac) başlatılıyor..."
+        # Eğer kütüphane klasörü varsa dahil et, yoksa normal derle
+        if [ -d "$LIB_PATH" ]; then
+          javac -cp "$LIB_PATH/*" -d build/classes @sources.txt
+        else
+          javac -d build/classes @sources.txt
+        fi
+        
+        echo "--> Adım 4: Kütüphaneler JAR içine paketleniyor..."
         cd build/jar-staging
-        for jar in ../../WentraReborn-CraftRise/libraries/*.jar; do jar xf "$jar"; done
+        if [ -d "../../$LIB_PATH" ]; then
+          for jar in ../../$LIB_PATH/*.jar; do
+            jar xf "$jar"
+          done
+        fi
+        
+        # Gereksiz dosyaları temizle
         rm -rf META-INF/MANIFEST.MF META-INF/*.RSA META-INF/*.SF META-INF/*.DSA
+        
+        echo "--> Adım 5: Kodlar birleştiriliyor..."
         cp -r ../classes/* .
         
-        # AGENT MANIFESTI - BAN RISKINI DÜŞÜREN KISIM
+        echo "--> Adım 6: Java Agent Manifesti oluşturuluyor..."
         echo "Manifest-Version: 1.0" > manifest.txt
         echo "Main-Class: wentra.Main" >> manifest.txt
         echo "Premain-Class: wentra.Main" >> manifest.txt
         echo "Agent-Class: wentra.Main" >> manifest.txt
         echo "Can-Retransform-Classes: true" >> manifest.txt
+        echo "Can-Redefine-Classes: true" >> manifest.txt
         echo "" >> manifest.txt
 
+        echo "--> Adım 7: Nihai WentraClient.jar oluşturuluyor..."
         jar cvfm ../../WentraClient.jar manifest.txt .
+        
+        echo "İşlem başarıyla tamamlandı efendim!"
 
-    - name: Upload JAR
+    - name: JAR Dosyasını İndir
       uses: actions/upload-artifact@v4
       with:
         name: Wentra-Agent-JAR
