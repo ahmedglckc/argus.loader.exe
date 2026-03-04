@@ -24,25 +24,44 @@ jobs:
         # Klasörleri oluştur
         mkdir -p out/classes out/staging
         
-        # EL İLE BELİRTİLEN YOLLAR (Burayı klasör ismine göre düzenleyin)
+        # EL İLE BELİRTİLEN YOLLAR
         SRC_DIR="WentraReborn-CraftRise/src"
         LIB_DIR="WentraReborn-CraftRise/libraries"
 
-        echo "--> Belirtilen yoldaki dosyalar derleniyor: $SRC_DIR"
+        echo "--> Belirtilen yollar kontrol ediliyor..."
         
-        # Java dosyalarını listele (Arasız, direkt yol üzerinden)
-        find $SRC_DIR -name "*.java" > sources.txt
+        # GÜVENLİK KONTROLÜ: Klasör gerçekten orada mı?
+        if [ ! -d "$SRC_DIR" ]; then
+          echo "::error:: KRİTİK HATA: '$SRC_DIR' klasörü bulunamadı!"
+          echo "Lütfen GitHub deponuzdaki klasör adının tam olarak 'WentraReborn-CraftRise' olduğundan emin olun."
+          echo "Mevcut depo içeriği:"
+          ls -la
+          exit 1
+        fi
+
+        echo "--> Dosyalar derleniyor: $SRC_DIR"
+        
+        # Java dosyalarını listele
+        find "$SRC_DIR" -name "*.java" > sources.txt
         
         # Derleme başlat (Kütüphanelerle birlikte)
         javac -cp "$LIB_DIR/*" -d out/classes @sources.txt
 
-        # Paketleme (Java Agent Formatı)
+        # Paketleme (Java Agent Formatı ve Fat JAR)
         cd out/staging
-        for f in ../../$LIB_DIR/*.jar; do jar xf "$f"; done
+        
+        # Kütüphaneler varsa içlerini JAR'a çıkart
+        if [ -d "../../$LIB_DIR" ]; then
+          for f in ../../$LIB_DIR/*.jar; do 
+            # Sadece dosya gerçekten varsa çıkart
+            [ -e "$f" ] && jar xf "$f"
+          done
+        fi
+        
         rm -rf META-INF/MANIFEST.MF
         cp -r ../classes/* .
         
-        # Java Agent Manifesti
+        # Java Agent Manifesti (Ban Koruması)
         printf "Manifest-Version: 1.0\nMain-Class: wentra.Main\nPremain-Class: wentra.Main\nAgent-Class: wentra.Main\nCan-Retransform-Classes: true\n\n" > manifest.txt
 
         jar cvfm ../../WentraClient.jar manifest.txt .
