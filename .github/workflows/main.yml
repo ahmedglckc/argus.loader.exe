@@ -1,62 +1,79 @@
-name: Wentra - Profesyonel Java Build
+name: Wentra - Final Fix Build
 
 on:
   push:
     branches: [ "main", "master" ]
-  workflow_dispatch: 
+  workflow_dispatch:
 
 jobs:
   build:
+    name: Wentra Agent JAR Derlemesi
     runs-on: ubuntu-latest
+    
     steps:
-    - name: 1. Kodları Çek
+    - name: 1. Depoyu Klonla (Checkout)
       uses: actions/checkout@v4
 
-    - name: 2. JDK 8 ve JavaFX Kur (Zulu)
+    - name: 2. JDK 8 ve JavaFX Kurulumu (Zulu jdk+fx)
       uses: actions/setup-java@v4
       with:
         java-version: '8'
         distribution: 'zulu'
         java-package: jdk+fx
 
-    - name: 3. Derle ve Paketle
+    - name: 3. Akıllı Derleme ve Paketleme
       run: |
-        # Klasörleri hazırla
-        mkdir -p out/classes out/staging
-        
-        # src klasörünü bul ve içindeki tüm java dosyalarını listele
-        SRC_PATH=$(find . -name "src" -type d -print -quit)
-        if [ -z "$SRC_PATH" ]; then
-          echo "HATA: Depoda 'src' klasörü bulunamadı efendim!"
+        echo "--> Adım 1: Klasörler nerede olursa olsun tespit ediliyor..."
+        # src ve libraries klasörlerini otomatik bulur
+        SRC_DIR=$(find . -name "src" -type d -print -quit)
+        LIB_DIR=$(find . -name "libraries" -type d -print -quit)
+
+        if [ -z "$SRC_DIR" ]; then
+          echo "::error:: HATA: Deponuzda 'src' klasörü bulunamadı! Lütfen Java kodlarınızın yüklü olduğundan emin olun."
+          ls -R # Hata durumunda tüm dosyaları listeler ki görebilelim
           exit 1
         fi
-        find "$SRC_PATH" -name "*.java" > sources.txt
+
+        echo "Kaynak Klasörü: $SRC_DIR"
+        echo "Kütüphane Klasörü: $LIB_DIR"
+
+        mkdir -p out/classes out/staging
         
-        # Kütüphaneleri (libraries) bul ve derle
-        LIB_PATH=$(find . -name "libraries" -type d -print -quit)
+        echo "--> Adım 2: Java dosyaları taranıyor..."
+        find "$SRC_DIR" -name "*.java" > sources.txt
+        
+        # Classpath oluştur (Kütüphaneler varsa eklenir)
         CP="."
-        [ -d "$LIB_PATH" ] && CP="$LIB_PATH/*"
-        
+        [ ! -z "$LIB_DIR" ] && CP="$LIB_DIR/*"
+
+        echo "--> Adım 3: Derleme (Javac) başlatılıyor..."
         javac -cp "$CP" -d out/classes @sources.txt
-        
-        # JAR Hazırlığı (Ajan Özellikleri)
+
+        echo "--> Adım 4: Kütüphaneler JAR içine paketleniyor..."
         cd out/staging
-        [ -d "../../$LIB_PATH" ] && for jar in ../../$LIB_PATH/*.jar; do jar xf "$jar"; done
-        rm -rf META-INF # Temiz başlangıç
+        # Eğer libraries klasörü varsa içindeki JAR'ları çıkartır
+        if [ ! -z "../../$LIB_DIR" ]; then
+          for f in ../../$LIB_DIR/*.jar; do
+            jar xf "$f"
+          done
+        fi
+
+        # Temizlik ve Sınıf Kopyalama
+        rm -rf META-INF/MANIFEST.MF
         cp -r ../classes/* .
-        
-        # BAN KORUMASI İÇİN AGENT MANIFESTI
-        echo "Manifest-Version: 1.0" > manifest.txt
-        echo "Main-Class: wentra.Main" >> manifest.txt
-        echo "Premain-Class: wentra.Main" >> manifest.txt
-        echo "Agent-Class: wentra.Main" >> manifest.txt
-        echo "Can-Retransform-Classes: true" >> manifest.txt
-        echo "" >> manifest.txt # Boş satır şart
 
+        echo "--> Adım 5: Java Agent Manifesti oluşturuluyor..."
+        # Bu kısım hilenin ban yememesini sağlayan 'Ajan' kimliğidir efendim.
+        # printf kullanımı boşluk ve satır hatalarını engeller.
+        printf "Manifest-Version: 1.0\nMain-Class: wentra.Main\nPremain-Class: wentra.Main\nAgent-Class: wentra.Main\nCan-Retransform-Classes: true\nCan-Redefine-Classes: true\n\n" > manifest.txt
+
+        echo "--> Adım 6: Nihai WentraClient.jar paketleniyor..."
         jar cvfm ../../WentraClient.jar manifest.txt .
+        
+        echo "Başarıyla tamamlandı efendim!"
 
-    - name: 4. JAR'ı Yayınla
+    - name: 4. JAR Dosyasını Sisteme Yükle
       uses: actions/upload-artifact@v4
       with:
-        name: WentraClient
+        name: WentraClient-Build
         path: WentraClient.jar
