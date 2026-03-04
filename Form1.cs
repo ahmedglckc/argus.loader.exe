@@ -9,71 +9,74 @@ namespace WentraLoader
 {
     public partial class Form1 : Form
     {
-        // GitHub Teması Renkleri
+        // GitHub Dark Tema Renkleri
         Color ghBg = Color.FromArgb(13, 17, 23);
         Color ghGreen = Color.FromArgb(35, 134, 54);
-        Color ghBorder = Color.FromArgb(48, 54, 61);
+        Color ghText = Color.FromArgb(201, 209, 217);
 
         public Form1()
         {
             InitializeComponent();
-            SetupGithubUI();
+            ApplyGitHubStyle();
         }
 
-        private void SetupGithubUI()
+        private void ApplyGitHubStyle()
         {
             this.BackColor = ghBg;
+            this.ForeColor = ghText;
             this.FormBorderStyle = FormBorderStyle.None;
-            // Butonun tasarımını GitHub "New" butonu gibi yapalım
-            btnLaunch.BackColor = ghGreen;
-            btnLaunch.FlatStyle = FlatStyle.Flat;
-            btnLaunch.FlatAppearance.BorderSize = 0;
-            btnLaunch.ForeColor = Color.White;
-            btnLaunch.Text = "🚀 Initialize Wentra Client";
-            
-            lblStatus.Text = "Status: Idle - Standing by for Argus.pro/Wentra";
-            lstLogs.BackColor = Color.FromArgb(22, 27, 34);
-            lstLogs.ForeColor = Color.FromArgb(139, 148, 158);
+            this.StartPosition = FormStartPosition.CenterScreen;
+            this.Size = new Size(500, 350);
+
+            // Başlık Çubuğu Taklidi
+            Label title = new Label() { Text = "Argus.pro / Wentra-Client-Loader", Location = new Point(10, 10), AutoSize = true, Font = new Font("Segoe UI Semibold", 10) };
+            this.Controls.Add(title);
+
+            // Çıkış Butonu
+            Button btnExit = new Button() { Text = "X", Size = new Size(30, 30), Location = new Point(460, 5), FlatStyle = FlatStyle.Flat, ForeColor = Color.White };
+            btnExit.FlatAppearance.BorderSize = 0;
+            btnExit.Click += (s, e) => Application.Exit();
+            this.Controls.Add(btnExit);
         }
 
         private async void btnLaunch_Click(object sender, EventArgs e)
         {
-            AddLog("Fetching repository: Argus.pro/Wentra...");
-            await Task.Delay(800);
-
+            AddLog("Checking environment... [OK]");
+            await Task.Delay(500);
+            
+            // Masaüstündeki hile klasörü yolu
             string desktop = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
             string jarPath = Path.Combine(desktop, "hile", "WentraClient.jar");
-            string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            string gamePath = Path.Combine(appData, ".craftrise", "CraftRise.exe");
+            
+            // CraftRise yolu (Kullanıcı adına göre dinamik)
+            string gamePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), ".craftrise", "CraftRise.exe");
 
-            // Dosya Kontrolü
             if (!File.Exists(jarPath))
             {
-                AddLog("[ERROR] Failed to locate local build: WentraClient.jar");
-                MessageBox.Show("Masaüstünde 'hile' klasörü ve JAR bulunamadı!");
+                AddLog("[ERROR] Failed to locate: " + Path.GetFileName(jarPath));
+                AddLog("[HINT] Create a folder named 'hile' on Desktop and put the JAR inside.");
                 return;
             }
 
-            AddLog("Checking local environment: Java JDK 8 Detected.");
-            await Task.Delay(500);
-            AddLog("Injecting javaagent parameters...");
+            AddLog("Injecting JavaAgent parameters into bootstrapper...");
+            await Task.Delay(800);
 
             try
             {
                 ProcessStartInfo startInfo = new ProcessStartInfo();
                 startInfo.FileName = gamePath;
-                // En güvenli yöntem: Java Agent
+                
+                // Efendim, burası hilenin ajan olarak sızmasını sağlayan en önemli satır:
                 startInfo.Arguments = $"-javaagent:\"{jarPath}\"";
+                
                 startInfo.WorkingDirectory = Path.GetDirectoryName(gamePath);
-
-                AddLog("Launching CraftRise with Wentra.jar...");
+                
+                AddLog("Success! Launching CraftRise...");
                 Process.Start(startInfo);
 
-                AddLog("Success! Client successfully detached from loader.");
-                lblStatus.Text = "Status: Success - Running";
-                
-                await Task.Delay(2000);
-                Application.Exit(); // Loader işini bitirdi
+                AddLog("Wentra successfully detached. Closing loader in 3 seconds.");
+                await Task.Delay(3000);
+                Application.Exit();
             }
             catch (Exception ex)
             {
@@ -81,14 +84,14 @@ namespace WentraLoader
             }
         }
 
-        private void AddLog(string msg)
+        private void AddLog(string message)
         {
-            // Terminal havası katan log fonksiyonu
-            lstLogs.Items.Add($"[{DateTime.Now:HH:mm:ss}] {msg}");
+            // Terminal tarzı loglama
+            lstLogs.Items.Add($"[{DateTime.Now:HH:mm:ss}] {message}");
             lstLogs.SelectedIndex = lstLogs.Items.Count - 1;
         }
 
-        // Formu sürüklemek için küçük bir dokunuş
+        // Formu sürüklemek için gerekli Windows API dokunuşu
         protected override void WndProc(ref Message m)
         {
             base.WndProc(ref m);
