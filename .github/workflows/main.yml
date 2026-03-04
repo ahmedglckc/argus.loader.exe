@@ -1,17 +1,17 @@
-name: Wentra - Profesyonel Java Agent Derleme Sistemi
+name: Wentra - Profesyonel Arşivden Derleme Sistemi
 
 on:
   push:
     branches: [ "main", "master" ]
-  workflow_dispatch: 
+  workflow_dispatch: # Efendim, istediğiniz an butona basıp başlatabilmeniz için
 
 jobs:
-  build:
-    name: Wentra Client Derleme Süreci
+  build-agent-jar:
+    name: Java Agent JAR Üretim Hattı
     runs-on: ubuntu-latest
     
     steps:
-    - name: 1. Kaynak Kodları Klonla
+    - name: 1. Depoyu Klonla (Checkout)
       uses: actions/checkout@v4
 
     - name: 2. JDK 8 ve JavaFX Kurulumu (Zulu jdk+fx)
@@ -21,63 +21,82 @@ jobs:
         distribution: 'zulu'
         java-package: jdk+fx
 
-    - name: 3. Depo Yapısını İncele (Hata Ayıklama)
-      # Efendim, burada 'ls -R' yaparak tüm dosyaları listeliyoruz. 
-      # Eğer loglarda sadece bir .rar görüyorsak, klasör bulunamadı hatasının sebebi budur.
+    - name: 3. RAR Dosyasını Bul ve Otomatik Ayıkla
+      # Efendim, burada Linux'un gücünü kullanıyoruz.
       run: |
-        echo "--- Depo İçeriği Listeleniyor ---"
+        echo "--> unrar aracı sisteme kuruluyor..."
+        sudo apt-get install unrar -y
+        
+        echo "--> Depodaki .rar dosyası aranıyor..."
+        RAR_PATH=$(find . -name "*.rar" | head -n 1)
+        
+        if [ -z "$RAR_PATH" ]; then
+          echo "HATA: Depoda hiçbir .rar dosyası bulunamadı! Efendim, lütfen dosyayı yüklediğinizden emin olun."
+          exit 1
+        fi
+        
+        echo "--> Bulunan Dosya: $RAR_PATH"
+        echo "--> Ayıklama işlemi başlıyor (Klasör yapısı korunuyor)..."
+        # 'x' parametresi klasör hiyerarşisini bozmadan çıkarır
+        unrar x "$RAR_PATH"
+        
+        echo "--> Ayıklama tamamlandı. Mevcut dosya yapısı:"
         ls -R
-        echo "-------------------------------"
 
-    - name: 4. Akıllı Derleme ve Ajan Paketleme
+    - name: 4. Akıllı Derleme (Javac) ve Bağımlılık Yönetimi
       run: |
-        echo "--> Adım 1: Java kaynak kodları taranıyor..."
-        # Tüm .java dosyalarını bulup listeye ekler
+        echo "--> Adım 1: Java kaynak kodları ve kütüphaneler tespit ediliyor..."
+        
+        # RAR'dan çıkan Java dosyalarını nerede olursa olsun buluyoruz
         find . -name "*.java" > sources.txt
         
-        if [ ! -s sources.txt ]; then
-          echo "Kritik Hata: Hiçbir .java dosyası bulunamadı! Efendim, lütfen kodlarınızı deponuza klasör olarak yüklediğinizden emin olun (RAR olarak değil)."
+        # Toplam dosya sayısını kontrol edelim
+        COUNT=$(wc -l < sources.txt)
+        echo "Toplam $COUNT adet Java dosyası derlemeye alınıyor."
+        
+        if [ "$COUNT" -eq 0 ]; then
+          echo "HATA: RAR içerisinden hiçbir .java dosyası çıkmadı! Arşivi kontrol edin efendim."
           exit 1
         fi
 
-        echo "--> Adım 2: Kütüphaneler (.jar) taranıyor..."
-        # Projenizdeki tüm kütüphaneleri bulup classpath'e ekler
+        # Tüm .jar kütüphanelerini bulup Classpath (LIBS) oluşturuyoruz
         LIBS=$(find . -name "*.jar" | tr '\n' ':')
         echo "Kullanılan Kütüphaneler: $LIBS"
 
-        mkdir -p out/classes
-        mkdir -p out/staging
+        mkdir -p build/classes
+        mkdir -p build/staging
 
-        echo "--> Adım 3: Derleme başlatılıyor..."
-        javac -cp "$LIBS" -d out/classes @sources.txt
+        echo "--> Adım 2: Derleme işlemi başlatılıyor..."
+        # JavaFX ve bulunan tüm kütüphaneler dahil edilerek derleme
+        javac -cp "$LIBS" -d build/classes @sources.txt
 
-        echo "--> Adım 4: Kütüphaneler tek bir JAR'da birleştiriliyor..."
-        cd out/staging
-        # Bulunan tüm JAR'ları açıp sınıflarını kopyalarız
+        echo "--> Adım 3: 'Fat JAR' hazırlığı (Kütüphaneler paketleniyor)..."
+        cd build/staging
+        # Tüm kütüphane JAR'larını açıp içindekileri hilemize dahil ediyoruz
         find ../.. -name "*.jar" -exec jar xf {} \;
         
-        # İmza çakışmalarını önlemek için güvenlik temizliği
+        # Ban riskini artırabilecek ve çakışma yapacak imza dosyalarını temizliyoruz
         rm -rf META-INF/*.RSA META-INF/*.SF META-INF/*.DSA META-INF/MANIFEST.MF
         
-        echo "--> Adım 5: Derlenen kodlar ekleniyor..."
+        echo "--> Adım 4: Kendi sınıflarımız ekleniyor..."
         cp -r ../classes/* .
         
-        echo "--> Adım 6: Java Agent Manifesti oluşturuluyor..."
-        # Bu kısım hilenin ban riskini en aza indirir efendim.
+        echo "--> Adım 5: Java Agent Manifesti oluşturuluyor (Kritik!)..."
+        # Efendim, bu kısım hilenin ban yemesini engelleyen 'ajan' kimliğidir
         echo "Manifest-Version: 1.0" > manifest.txt
         echo "Main-Class: wentra.Main" >> manifest.txt
         echo "Premain-Class: wentra.Main" >> manifest.txt
         echo "Agent-Class: wentra.Main" >> manifest.txt
         echo "Can-Retransform-Classes: true" >> manifest.txt
         echo "Can-Redefine-Classes: true" >> manifest.txt
-        echo "" >> manifest.txt
+        echo "" >> manifest.txt # Boş satır zorunludur
 
-        echo "--> Adım 7: Nihai WentraClient.jar paketleniyor..."
+        echo "--> Adım 6: Nihai WentraClient.jar paketleniyor..."
         jar cvfm ../../WentraClient.jar manifest.txt .
         
-        echo "İşlem başarıyla tamamlandı efendim!"
+        echo "Tebrikler efendim, JAR dosyanız hazır!"
 
-    - name: 5. Oluşan JAR Dosyasını Yükle
+    - name: 5. Çıktıyı Yayınla (Artifact)
       uses: actions/upload-artifact@v4
       with:
         name: Wentra-Build-Success
