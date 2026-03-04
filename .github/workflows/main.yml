@@ -1,0 +1,71 @@
+name: Wentra - Java Agent Build System
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch: # El ile başlatma butonu ekler
+
+jobs:
+  build-java-agent:
+    name: Build Wentra JAR (Java Agent)
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Repository Checkout
+      uses: actions/checkout@v4
+
+    # JavaFX destekli Zulu JDK 8 kurulumu
+    - name: Setup Zulu JDK 8 with JavaFX
+      uses: actions/setup-java@v4
+      with:
+        java-version: '8'
+        distribution: 'zulu'
+        java-package: jdk+fx
+        
+    - name: Compile and Package
+      run: |
+        echo "--> Klasör yapısı hazırlanıyor..."
+        mkdir -p build/classes
+        mkdir -p build/jar-staging
+        
+        echo "--> Kaynak dosyalar taranıyor..."
+        find WentraReborn-CraftRise/src -name "*.java" > sources.txt
+        
+        echo "--> Java kodları derleniyor..."
+        # Kütüphaneleri (libraries) dahil ederek derleme yapıyoruz
+        javac -cp "WentraReborn-CraftRise/libraries/*" -d build/classes @sources.txt
+        
+        echo "--> Kütüphaneler JAR içine çıkartılıyor..."
+        cd build/jar-staging
+        for jar in ../../WentraReborn-CraftRise/libraries/*.jar; do
+          jar xf "$jar"
+        done
+        
+        # İmza ve gereksiz manifest dosyalarını temizliyoruz
+        rm -rf META-INF/MANIFEST.MF META-INF/*.RSA META-INF/*.SF META-INF/*.DSA
+        
+        echo "--> Derlenen sınıflar staging alanına kopyalanıyor..."
+        cp -r ../classes/* .
+        
+        echo "--> Java Agent MANIFEST.MF dosyası oluşturuluyor..."
+        # Bu kısım hilenin ban riskini en aza indirir ve oyuna enjekte olmasını sağlar
+        echo "Manifest-Version: 1.0" > manifest.txt
+        echo "Main-Class: wentra.Main" >> manifest.txt
+        echo "Premain-Class: wentra.Main" >> manifest.txt
+        echo "Agent-Class: wentra.Main" >> manifest.txt
+        echo "Can-Retransform-Classes: true" >> manifest.txt
+        echo "Can-Redefine-Classes: true" >> manifest.txt
+        echo "" >> manifest.txt # Zorunlu boş satır
+
+        echo "--> Nihai WentraClient.jar paketleniyor..."
+        jar cvfm ../../WentraClient.jar manifest.txt .
+        
+        echo "--> İşlem başarıyla tamamlandı efendim."
+
+    - name: Upload Finished JAR
+      uses: actions/upload-artifact@v4
+      with:
+        name: Wentra-Agent-JAR
+        path: WentraClient.jar
