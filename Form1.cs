@@ -6,39 +6,36 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using System.Linq;
 
 namespace ArgusLoader
 {
     public partial class Form1 : Form
     {
         #region GitHub Pro Dark Palette
-        private static readonly Color BgMain = Color.FromArgb(13, 17, 23);
-        private static readonly Color BgHeader = Color.FromArgb(22, 27, 34);
-        private static readonly Color GhGreen = Color.FromArgb(35, 134, 54);
-        private static readonly Color GhGreenHover = Color.FromArgb(46, 160, 67);
-        private static readonly Color GhRed = Color.FromArgb(248, 81, 73);
-        private static readonly Color TextMain = Color.FromArgb(201, 209, 217);
-        private static readonly Color TextMuted = Color.FromArgb(139, 148, 158);
+        private static readonly Color BgMain = Color.FromArgb(13, 17, 23);       // Ana Arka Plan
+        private static readonly Color BgHeader = Color.FromArgb(22, 27, 34);     // Üst Bar
+        private static readonly Color GhGreen = Color.FromArgb(35, 134, 54);     // GitHub Yeşili
+        private static readonly Color GhGreenHover = Color.FromArgb(46, 160, 67); // Hover Yeşili
+        private static readonly Color TextMain = Color.FromArgb(201, 209, 217);  // Ana Yazı
+        private static readonly Color TextMuted = Color.FromArgb(139, 148, 158); // Log Yazısı
         #endregion
 
         public Form1()
         {
             InitializeComponent();
-            InitializeAdvancedUI();
+            SetupProfessionalUI();
         }
 
-        private void InitializeAdvancedUI()
+        private void SetupProfessionalUI()
         {
-            // Ana Form Ayarları
+            // Form Temel Ayarları
             this.BackColor = BgMain;
             this.ForeColor = TextMain;
             this.FormBorderStyle = FormBorderStyle.None;
             this.StartPosition = FormStartPosition.CenterScreen;
-            this.Size = new Size(580, 420);
-            this.Text = "Argus Deployment Terminal";
+            this.Size = new Size(550, 400);
 
-            // ListBox (Log Alanı) İyileştirmesi
+            // Log Alanı (ListBox) Ayarları
             lstLogs.BackColor = Color.FromArgb(1, 4, 9);
             lstLogs.BorderStyle = BorderStyle.None;
             lstLogs.ForeColor = TextMuted;
@@ -52,108 +49,91 @@ namespace ArgusLoader
             btnLaunch.Cursor = Cursors.Hand;
             btnLaunch.Font = new Font("Segoe UI", 10f, FontStyle.Bold);
 
-            AddLog("System initialized. Awaiting user authorization...");
+            AddLog("System initialized. Local environment ready.");
         }
 
         private async void btnLaunch_Click(object sender, EventArgs e)
         {
-            SetInterfaceState(false);
-            
+            btnLaunch.Enabled = false;
+            btnLaunch.Text = "⌛ DEPLOYING...";
+
             AddLog("-------------------------------------------");
-            AddLog(">> INITIALIZING DEPLOYMENT WORKFLOW");
+            AddLog(">> STARTING ARGUS DEPLOYMENT WORKFLOW");
             await Task.Delay(400);
 
-            // 1. Dinamik Yol Tespiti (Exe'nin yanındaki 'hile' klasörü)
+            // 1. Dinamik Yol Tespiti (EXE'nin yanındaki 'hile' klasörü)
             string rootDir = AppDomain.CurrentDomain.BaseDirectory;
             string hileDir = Path.Combine(rootDir, "hile");
             string jarPath = Path.Combine(hileDir, "WentraClient.jar");
+            
+            // Oyun Yolu
             string gamePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), ".craftrise", "CraftRise.exe");
 
-            // 2. Ön Kontroller (Pre-flight Checks)
+            AddLog($">> Scanning local directory: .\\hile\\");
+
+            // 2. Klasör ve Dosya Kontrolü
             if (!Directory.Exists(hileDir))
             {
-                AddLog("[!] ERROR: 'hile' directory is missing in root.");
-                ResetInterface();
+                AddLog("::error:: Directory 'hile' not found beside loader.");
+                ResetButton();
                 return;
             }
 
             if (!File.Exists(jarPath))
             {
-                AddLog($"[!] ERROR: Binary target not found: {Path.GetFileName(jarPath)}");
-                ResetInterface();
+                AddLog("::error:: 'WentraClient.jar' not found in .\\hile\\");
+                ResetButton();
                 return;
             }
 
-            // 3. Oyun Süreci Kontrolü (Opsiyonel ama profesyonel bir dokunuş)
-            if (Process.GetProcessesByName("javaw").Length > 0)
-            {
-                AddLog("[*] WARN: JVM instance already detected. Procedural hook starting...");
-            }
-
-            AddLog("[+] Verifying local repository assets...");
+            AddLog("::success:: Binary assets verified locally.");
             await Task.Delay(500);
 
-            // 4. Deployment Başlatma
+            // 3. Başlatma ve Enjeksiyon
             try
             {
-                AddLog("[+] Constructing JavaAgent arguments...");
+                AddLog("Hooking into Java Virtual Machine...");
                 ProcessStartInfo startInfo = new ProcessStartInfo
                 {
                     FileName = gamePath,
-                    // Efendim, hileyi ajan yapan sihirli parametre:
+                    // JAR dosyasını Ajan olarak sisteme fırlatıyoruz
                     Arguments = $"-javaagent:\"{jarPath}\"",
                     WorkingDirectory = Path.GetDirectoryName(gamePath),
-                    UseShellExecute = false,
-                    RedirectStandardOutput = false
+                    UseShellExecute = false
                 };
 
-                AddLog("[+] Executing bootstrapper: CraftRise.exe");
+                AddLog("Executing bootstrapper: CraftRise.exe");
                 Process.Start(startInfo);
 
-                AddLog(">> DEPLOYMENT SUCCESSFUL.");
-                AddLog(">> Closing Argus session in 3 seconds...");
+                AddLog("-------------------------------------------");
+                AddLog("DEPLOYMENT SUCCESSFUL. Session detached.");
+                AddLog("Closing terminal in 3 seconds...");
                 
                 await Task.Delay(3000);
                 Application.Exit();
             }
             catch (Exception ex)
             {
-                AddLog("[!] FATAL: " + ex.Message);
-                ResetInterface();
+                AddLog("::fatal:: Exception during launch: " + ex.Message);
+                ResetButton();
             }
         }
 
-        private void SetInterfaceState(bool enabled)
+        private void ResetButton()
         {
-            btnLaunch.Enabled = enabled;
-            btnLaunch.Text = enabled ? "🚀 Initialize Deployment" : "⌛ Running...";
-            btnLaunch.BackColor = enabled ? GhGreen : GhHeader;
-        }
-
-        private void ResetInterface()
-        {
-            this.Invoke((MethodInvoker)delegate {
-                SetInterfaceState(true);
-                AddLog(">> Session suspended. Awaiting retry.");
-            });
+            btnLaunch.Enabled = true;
+            btnLaunch.Text = "🚀 Initialize Deployment";
         }
 
         private void AddLog(string message)
         {
-            if (lstLogs.InvokeRequired)
-            {
-                lstLogs.Invoke(new Action<string>(AddLog), message);
-                return;
-            }
-
-            string timestamp = DateTime.Now.ToString("HH:mm:ss");
-            lstLogs.Items.Add($"[{timestamp}] {message}");
-            
-            // Otomatik Kaydırma
-            lstLogs.TopIndex = lstLogs.Items.Count - 1;
+            this.Invoke((MethodInvoker)delegate {
+                lstLogs.Items.Add($"[{DateTime.Now:HH:mm:ss}] {message}");
+                lstLogs.SelectedIndex = lstLogs.Items.Count - 1; // Otomatik kaydırma
+            });
         }
 
-        #region Windows API - Drag Mechanism
+        #region Form Sürükleme Mantığı
         [DllImport("user32.dll")]
         public static extern bool ReleaseCapture();
         [DllImport("user32.dll")]
