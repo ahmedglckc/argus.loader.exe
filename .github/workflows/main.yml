@@ -1,72 +1,71 @@
-name: Wentra Client - Java Agent ve Otomatik Derleme
+name: Wentra - Süper Otomatik Derleme Sistemi
 
 on:
   push:
     branches: [ "main", "master" ]
-  pull_request:
-    branches: [ "main", "master" ]
   workflow_dispatch: 
 
 jobs:
-  build-java-client:
-    name: Java Agent (JAR) Derlemesi
+  build-client:
+    name: Java Agent JAR Derlemesi
     runs-on: ubuntu-latest
     
     steps:
     - name: Depoyu Klonla
       uses: actions/checkout@v4
 
-    - name: JDK 8 ve JavaFX Ortamını Hazırla
+    - name: JDK 8 ve JavaFX Kurulumu (Zulu)
       uses: actions/setup-java@v4
       with:
         java-version: '8'
         distribution: 'zulu'
         java-package: jdk+fx
-        
-    - name: Profesyonel Ajan Derlemesi
-      run: |
-        echo "--> Adım 1: Klasör yolları otomatik tespit ediliyor..."
-        # src ve libraries klasörlerini nerede olursa olsun buluyoruz
-        SRC_PATH=$(find . -name "src" -type d -print -quit)
-        LIB_PATH=$(find . -name "libraries" -type d -print -quit)
-        
-        echo "Tespit edilen Kaynak (SRC): $SRC_PATH"
-        echo "Tespit edilen Kütüphaneler (LIB): $LIB_PATH"
 
-        if [ -z "$SRC_PATH" ]; then
-          echo "HATA: 'src' klasörü bulunamadı! Lütfen deponuzu kontrol edin."
+    - name: Dosya Yapısını Kontrol Et (Debug)
+      # Eğer hata alırsak, hangi klasörün nerede olduğunu buradan göreceğiz efendim.
+      run: |
+        echo "--- Depo İçeriği Listeleniyor ---"
+        ls -R
+        echo "-------------------------------"
+
+    - name: Akıllı Derleme ve Paketleme
+      run: |
+        echo "--> Adım 1: Java kaynak kodları nerede olursa olsun bulunuyor..."
+        find . -name "*.java" > sources.txt
+        
+        FILE_COUNT=$(wc -l < sources.txt)
+        echo "Toplam $FILE_COUNT adet Java dosyası bulundu."
+        
+        if [ "$FILE_COUNT" -eq 0 ]; then
+          echo "HATA: Depoda hiçbir .java dosyası bulunamadı! Lütfen kodlarınızı push ettiğinizden emin olun."
           exit 1
         fi
 
-        mkdir -p build/classes
-        mkdir -p build/jar-staging
+        echo "--> Adım 2: Kütüphaneler (.jar) taranıyor ve yollar oluşturuluyor..."
+        # Tüm .jar dosyalarını bulup aralarına ':' koyarak bir classpath oluşturuyoruz
+        LIBS=$(find . -name "*.jar" | tr '\n' ':')
+        echo "Kullanılan Kütüphaneler: $LIBS"
+
+        mkdir -p out/classes
+        mkdir -p out/staging
+
+        echo "--> Adım 3: Derleme başlatılıyor..."
+        # JavaFX ve bulunan tüm kütüphaneler dahil edilerek derleme yapılır
+        javac -cp "$LIBS" -d out/classes @sources.txt
+
+        echo "--> Adım 4: 'Fat JAR' hazırlığı (Kütüphaneler açılıyor)..."
+        # JAR'ın içine kütüphaneleri gömüyoruz ki hile tek parça çalışsın
+        cd out/staging
+        find ../.. -name "*.jar" -exec jar xf {} \;
         
-        echo "--> Adım 2: Java dosyaları taranıyor..."
-        find "$SRC_PATH" -name "*.java" > sources.txt
+        # Gereksiz imza dosyalarını temizleyerek çakışmaları önlüyoruz efendim
+        rm -rf META-INF/*.RSA META-INF/*.SF META-INF/*.DSA META-INF/MANIFEST.MF
         
-        echo "--> Adım 3: Derleme (Javac) başlatılıyor..."
-        # Eğer kütüphane klasörü varsa dahil et, yoksa normal derle
-        if [ -d "$LIB_PATH" ]; then
-          javac -cp "$LIB_PATH/*" -d build/classes @sources.txt
-        else
-          javac -d build/classes @sources.txt
-        fi
-        
-        echo "--> Adım 4: Kütüphaneler JAR içine paketleniyor..."
-        cd build/jar-staging
-        if [ -d "../../$LIB_PATH" ]; then
-          for jar in ../../$LIB_PATH/*.jar; do
-            jar xf "$jar"
-          done
-        fi
-        
-        # Gereksiz dosyaları temizle
-        rm -rf META-INF/MANIFEST.MF META-INF/*.RSA META-INF/*.SF META-INF/*.DSA
-        
-        echo "--> Adım 5: Kodlar birleştiriliyor..."
+        echo "--> Adım 5: Kendi sınıflarımız ekleniyor..."
         cp -r ../classes/* .
         
-        echo "--> Adım 6: Java Agent Manifesti oluşturuluyor..."
+        echo "--> Adım 6: Java Agent Manifesti hazırlanıyor..."
+        # Bu ayarlar hilenin ban riskini düşürür ve oyuna enjekte olmasını sağlar
         echo "Manifest-Version: 1.0" > manifest.txt
         echo "Main-Class: wentra.Main" >> manifest.txt
         echo "Premain-Class: wentra.Main" >> manifest.txt
@@ -75,13 +74,13 @@ jobs:
         echo "Can-Redefine-Classes: true" >> manifest.txt
         echo "" >> manifest.txt
 
-        echo "--> Adım 7: Nihai WentraClient.jar oluşturuluyor..."
+        echo "--> Adım 7: Nihai JAR dosyası paketleniyor..."
         jar cvfm ../../WentraClient.jar manifest.txt .
         
         echo "İşlem başarıyla tamamlandı efendim!"
 
-    - name: JAR Dosyasını İndir
+    - name: JAR Dosyasını Sisteme Yükle
       uses: actions/upload-artifact@v4
       with:
-        name: Wentra-Agent-JAR
+        name: Wentra-Agent-Build
         path: WentraClient.jar
