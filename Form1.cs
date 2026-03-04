@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace WentraLoader
@@ -11,8 +12,12 @@ namespace WentraLoader
         public Form1()
         {
             InitializeComponent();
-            
-            // Basit ve şık karanlık tema ayarları
+            SetupUI();
+        }
+
+        private void SetupUI()
+        {
+            // Temiz, karanlık ve profesyonel tasarım
             this.BackColor = Color.FromArgb(13, 17, 23);
             this.ForeColor = Color.White;
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -21,7 +26,7 @@ namespace WentraLoader
             this.Text = "Argus.pro / Wentra Injector";
             this.Size = new Size(350, 200);
 
-            // Başlatma Butonu
+            // Başlat Butonu
             Button btnLaunch = new Button();
             btnLaunch.Text = "🚀 Hileyi Enjekte Et";
             btnLaunch.Size = new Size(200, 50);
@@ -32,55 +37,63 @@ namespace WentraLoader
             btnLaunch.FlatAppearance.BorderSize = 0;
             btnLaunch.Font = new Font("Segoe UI", 10f, FontStyle.Bold);
             btnLaunch.Cursor = Cursors.Hand;
-            
-            // Butona tıklama olayı
             btnLaunch.Click += BtnLaunch_Click;
+            
             this.Controls.Add(btnLaunch);
         }
 
-        private void BtnLaunch_Click(object sender, EventArgs e)
+        private async void BtnLaunch_Click(object sender, EventArgs e)
         {
-            // 1. Masaüstündeki hile klasörünün yolunu bulur
+            Button btn = (Button)sender;
+            btn.Enabled = false;
+            btn.Text = "⌛ Bekleyin...";
+
+            // 1. Masaüstü/hile/WentraClient.jar yolunu belirle
             string desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
             string jarPath = Path.Combine(desktopPath, "hile", "WentraClient.jar");
+            
+            // 2. Oyunun yolunu belirle
+            string gamePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), ".craftrise", "CraftRise.exe");
 
-            // 2. CraftRise'ın sistemdeki yüklü olduğu yolu bulur
-            string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            string gamePath = Path.Combine(appData, ".craftrise", "CraftRise.exe");
-
-            // 3. Dosyaların gerçekten orada olup olmadığını kontrol eder
+            // 3. Dosya Kontrolleri
             if (!File.Exists(jarPath))
             {
-                MessageBox.Show("HATA: JAR dosyası bulunamadı!\n\nLütfen hilenizi şu yola koyun:\n" + jarPath, "Argus.pro - Dosya Eksik", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("HATA: JAR dosyası bulunamadı!\nLütfen hilenizi şu yola koyun:\n" + jarPath, "Argus.pro", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                btn.Enabled = true;
+                btn.Text = "🚀 Hileyi Enjekte Et";
                 return;
             }
 
             if (!File.Exists(gamePath))
             {
-                MessageBox.Show("HATA: CraftRise.exe bulunamadı!\nOyunun yüklü olduğundan emin olun.", "Argus.pro - Oyun Bulunamadı", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("HATA: CraftRise.exe bulunamadı!\nOyunun yüklü olduğundan emin olun.", "Argus.pro", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                btn.Enabled = true;
+                btn.Text = "🚀 Hileyi Enjekte Et";
                 return;
             }
 
-            // 4. Oyunu JAR dosyası ile birlikte (Agent olarak) başlatır
+            // 4. Oyunu Ajan (javaagent) parametresiyle başlat
             try
             {
-                ProcessStartInfo startInfo = new ProcessStartInfo();
-                startInfo.FileName = gamePath;
-                
-                // JAR dosyasını EXE'nin içine gömmeden dışarıdan enjekte eden komut
-                startInfo.Arguments = $"-javaagent:\"{jarPath}\"";
-                startInfo.WorkingDirectory = Path.GetDirectoryName(gamePath);
+                ProcessStartInfo startInfo = new ProcessStartInfo
+                {
+                    FileName = gamePath,
+                    Arguments = $"-javaagent:\"{jarPath}\"",
+                    WorkingDirectory = Path.GetDirectoryName(gamePath),
+                    UseShellExecute = false
+                };
                 
                 Process.Start(startInfo);
                 
-                MessageBox.Show("WentraClient başarıyla CraftRise'a enjekte edildi!", "Argus.pro - Başarılı", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                
-                // İşlem bitince loader kendini kapatır
+                MessageBox.Show("WentraClient başarıyla başlatıldı! İyi oyunlar efendim.", "Argus.pro", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                await Task.Delay(1000);
                 Application.Exit();
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Enjekte sırasında kritik bir hata oluştu:\n" + ex.Message, "Argus.pro - Kritik Hata", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("Kritik Hata:\n" + ex.Message, "Hata", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                btn.Enabled = true;
+                btn.Text = "🚀 Hileyi Enjekte Et";
             }
         }
     }
